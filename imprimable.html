@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analyse économique — livret imprimable</title>
+<style>
+  :root {
+    --encre: #111318;
+    --gris: #5b6070;
+    --trait: #c9ccd6;
+    --trait-clair: #e4e6ee;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: #fff;
+    color: var(--encre);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 10.5pt;
+    line-height: 1.45;
+  }
+
+  h1, h2, h3, .cov__kicker, .bloc__lab, .notions__t, .suivi, .som__p {
+    font-family: "Segoe UI", Arial, sans-serif;
+  }
+
+  /* ---------- écran ---------- */
+  .barre-ecran {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    background: #0e1220;
+    color: #fff;
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 13px;
+  }
+  .barre-ecran button {
+    font: inherit;
+    font-weight: 600;
+    padding: 8px 16px;
+    border: 0;
+    border-radius: 8px;
+    background: #2b57ff;
+    color: #fff;
+    cursor: pointer;
+  }
+  @media screen {
+    body { max-width: 190mm; margin: 0 auto; padding: 0 0 24mm; }
+  }
+
+  /* ---------- couverture ---------- */
+  .couverture {
+    min-height: 225mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    break-after: page;
+    page-break-after: always;
+  }
+  .cov__kicker {
+    margin: 0 0 8mm;
+    font-size: 9pt;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--gris);
+  }
+  .cov__titre {
+    margin: 0;
+    font-size: 34pt;
+    line-height: 1.05;
+    letter-spacing: -.02em;
+  }
+  .cov__sous {
+    margin: 5mm 0 0;
+    font-size: 14pt;
+    color: var(--gris);
+  }
+  .cov__meta {
+    margin: 3mm 0 0;
+    font-size: 10pt;
+    color: var(--gris);
+  }
+  .cov__regle {
+    height: 2px;
+    background: var(--encre);
+    margin: 9mm 0 8mm;
+  }
+  .cov__mode h2 {
+    margin: 0 0 3mm;
+    font-size: 11pt;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .cov__mode ol { margin: 0; padding-left: 5mm; }
+  .cov__mode li { margin-bottom: 2.5mm; font-size: 10.5pt; }
+  .cov__pied {
+    margin: 12mm 0 0;
+    padding-top: 4mm;
+    border-top: 1px solid var(--trait);
+    font-size: 9pt;
+    color: var(--gris);
+  }
+
+  /* ---------- sommaire ---------- */
+  .sommaire-page { break-after: page; page-break-after: always; }
+  .sommaire-page h2 { margin: 0 0 6mm; font-size: 16pt; }
+  .sommaire { margin: 0; padding: 0; list-style: none; }
+  .sommaire li {
+    display: flex;
+    align-items: baseline;
+    gap: 4mm;
+    padding: 3mm 0;
+    border-bottom: 1px solid var(--trait-clair);
+  }
+  .som__p {
+    min-width: 20mm;
+    font-size: 8.5pt;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--gris);
+  }
+  .som__t { font-weight: 700; }
+  .som__n { margin-left: auto; font-size: 9pt; color: var(--gris); }
+
+  /* ---------- auto-test ---------- */
+  .autotest-page { break-after: page; page-break-after: always; }
+  .autotest-page h2 { margin: 0 0 2mm; font-size: 16pt; }
+  .autotest-page .aide { margin: 0 0 6mm; font-size: 9.5pt; color: var(--gris); }
+  .at { column-count: 2; column-gap: 9mm; }
+  .at__groupe { break-inside: avoid; margin-bottom: 6mm; }
+  .at__titre {
+    margin: 0 0 2mm;
+    font-size: 9pt;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--gris);
+    border-bottom: 1px solid var(--trait);
+    padding-bottom: 1mm;
+  }
+  .at__q { margin: 0 0 2.4mm; font-size: 9.5pt; line-height: 1.4; }
+  .at__num {
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 8pt;
+    font-weight: 700;
+    color: var(--gris);
+  }
+
+  /* ---------- réponses ---------- */
+  .partie { break-before: page; page-break-before: always; }
+  .partie:first-of-type { break-before: auto; page-break-before: auto; }
+  .partie__titre {
+    margin: 0 0 1mm;
+    font-size: 17pt;
+    line-height: 1.2;
+  }
+  .partie__titre span {
+    display: block;
+    font-size: 8.5pt;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--gris);
+    margin-bottom: 1.5mm;
+  }
+  .partie__note {
+    margin: 0 0 7mm;
+    font-size: 9pt;
+    color: var(--gris);
+    border-bottom: 2px solid var(--encre);
+    padding-bottom: 2mm;
+  }
+
+  .q {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 9mm;
+    padding-bottom: 7mm;
+    border-bottom: 1px solid var(--trait-clair);
+  }
+  .q__tete { display: flex; gap: 3mm; align-items: baseline; }
+  .q__num {
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 8.5pt;
+    font-weight: 700;
+    color: #fff;
+    background: var(--encre);
+    padding: .8mm 2mm;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .q__texte {
+    margin: 0;
+    font-size: 12.5pt;
+    line-height: 1.3;
+  }
+  .q__meta {
+    margin: 1.6mm 0 3mm;
+    font-size: 8.5pt;
+    letter-spacing: .04em;
+    color: var(--gris);
+  }
+
+  .bloc {
+    margin-bottom: 2.6mm;
+    padding-left: 3mm;
+    border-left: 2px solid var(--trait);
+  }
+  .bloc p { margin: 0; text-align: justify; hyphens: auto; }
+  .bloc__lab {
+    display: block;
+    font-size: 7.5pt;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--gris);
+    margin-bottom: .6mm;
+  }
+  .bloc--intro { border-left-color: #2b57ff; background: #f2f4ff; padding: 2mm 3mm; }
+  .bloc--conclusion { border-left-color: #16a34a; background: #f1f8f3; padding: 2mm 3mm; }
+
+  .notions {
+    margin: 3mm 0 0;
+    font-size: 8.5pt;
+    line-height: 1.8;
+  }
+  .notions__t {
+    font-size: 7.5pt;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--gris);
+    margin-right: 2mm;
+  }
+  .notion {
+    display: inline-block;
+    border: 1px solid var(--trait);
+    border-radius: 20px;
+    padding: .2mm 2mm;
+    margin: 0 1mm .8mm 0;
+  }
+
+  .suivi {
+    display: flex;
+    gap: 6mm;
+    margin-top: 3mm;
+    font-size: 8.5pt;
+    color: var(--gris);
+  }
+  .suivi__date { margin-left: auto; }
+
+  @page { size: A4; margin: 15mm 16mm 14mm; }
+
+  @media print {
+    .barre-ecran { display: none; }
+    body { font-size: 10pt; }
+    .bloc--intro, .bloc--conclusion { background: #f4f4f4; }
+    .q__num { background: #111; }
+    orphans: 2;
+    widows: 2;
+  }
+</style>
+</head>
+<body>
+
+<div class="barre-ecran">
+  <span>Livret imprimable · A4</span>
+  <button type="button" onclick="window.print()">Imprimer / PDF</button>
+</div>
+
+<header class="couverture">
+  <p class="cov__kicker">Concours d'inspecteur des finances publiques</p>
+  <h1 class="cov__titre">Analyse<br>économique</h1>
+  <p class="cov__sous">50 questions à réponses courtes, réponses modèles</p>
+  <p class="cov__meta" id="compte-off">Formulations officielles et questions d'entraînement</p>
+  <div class="cov__regle"></div>
+  <div class="cov__mode">
+    <h2>Mode d'emploi</h2>
+    <ol>
+      <li>Lis la question, puis rédige ta réponse en une quinzaine de lignes sur une feuille libre, sans regarder le modèle.</li>
+      <li>Compare avec la réponse : introduction, développements numérotés, conclusion.</li>
+      <li>Vérifie que tu as placé toutes les notions clés, puis coche ton niveau en bas de la fiche.</li>
+      <li>Reviens sur la question un jour, deux jours, puis sept jours plus tard.</li>
+    </ol>
+  </div>
+  <p class="cov__pied">Épreuve n° 2 · 45 QCM et 3 à 4 QRC · 2 h 30 · coefficient 3 · note éliminatoire sous 5/20</p>
+</header>
+
+<section class="sommaire-page">
+  <h2>Sommaire</h2>
+  <ul class="sommaire" id="sommaire"></ul>
+</section>
+
+<section class="autotest-page">
+  <h2>Auto-test</h2>
+  <p class="aide">Les 50 énoncés, sans les réponses. À utiliser pour se réciter à voix haute ou pour préparer une séance de rédaction.</p>
+  <div class="at" id="autotest"></div>
+</section>
+
+<div id="reponses"></div>
+
+<script src="data/1-courants.js"></script>
+<script src="data/2-micro.js"></script>
+<script src="data/3-macro.js"></script>
+<script src="data/4-finance.js"></script>
+<script src="data/5-international.js"></script>
+<script src="data/6-plans.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var B = (window.BANQUE || []).slice();
+  var P = window.PLANS || {};
+  var PARTIES = {
+    1: "Les grands courants",
+    2: "Microéconomie",
+    3: "Macroéconomie",
+    4: "Monnaie et finance",
+    5: "Économie internationale"
+  };
+
+  B.sort(function (a, b) { return a.partie - b.partie; });
+
+  function esc(t) {
+    return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function riche(t) {
+    return esc(t).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  }
+  function roles(q) {
+    var plan = P[q.id];
+    var n = q.reponse.length;
+    return q.reponse.map(function (_, i) {
+      if (plan && plan[i]) return plan[i];
+      return i === 0 ? "intro" : (i === n - 1 ? "conclusion" : "dev");
+    });
+  }
+
+  var num = {};
+  B.forEach(function (q, i) { num[q.id] = i + 1; });
+
+  var parties = [1, 2, 3, 4, 5].filter(function (p) {
+    return B.some(function (q) { return q.partie === p; });
+  });
+
+  document.getElementById("sommaire").innerHTML = parties.map(function (p) {
+    var liste = B.filter(function (q) { return q.partie === p; });
+    var off = liste.filter(function (q) { return q.statut === "officiel"; }).length;
+    return "<li><span class=\"som__p\">Partie " + p + "</span>" +
+      "<span class=\"som__t\">" + PARTIES[p] + "</span>" +
+      "<span class=\"som__n\">" + liste.length + " questions" +
+      (off ? " · " + off + " sujet" + (off > 1 ? "s" : "") + " officiel" + (off > 1 ? "s" : "") : "") + "</span></li>";
+  }).join("");
+
+  document.getElementById("autotest").innerHTML = parties.map(function (p) {
+    var liste = B.filter(function (q) { return q.partie === p; });
+    return "<div class=\"at__groupe\"><h3 class=\"at__titre\">" + PARTIES[p] + "</h3>" +
+      liste.map(function (q) {
+        return "<p class=\"at__q\"><span class=\"at__num\">Q" + num[q.id] + "</span> " + esc(q.question) + "</p>";
+      }).join("") + "</div>";
+  }).join("");
+
+  document.getElementById("reponses").innerHTML = parties.map(function (p) {
+    var liste = B.filter(function (q) { return q.partie === p; });
+    var cartes = liste.map(function (q) {
+      var r = roles(q);
+      var dev = 0;
+      var blocs = q.reponse.map(function (par, i) {
+        var role = r[i];
+        var lab = role === "intro" ? "Introduction" : (role === "conclusion" ? "Conclusion" : String(++dev));
+        return "<div class=\"bloc bloc--" + role + "\"><span class=\"bloc__lab\">" + lab + "</span><p>" + riche(par) + "</p></div>";
+      }).join("");
+
+      return "<article class=\"q\">" +
+        "<div class=\"q__tete\"><span class=\"q__num\">Q" + num[q.id] + "</span>" +
+          "<h3 class=\"q__texte\">" + esc(q.question) + "</h3></div>" +
+        "<p class=\"q__meta\">" + PARTIES[q.partie] + " · " + esc(q.theme) + " · " +
+          (q.statut === "officiel" ? "sujet officiel" : "entraînement") + "</p>" +
+        "<div class=\"blocs\">" + blocs + "</div>" +
+        "<p class=\"notions\"><span class=\"notions__t\">Notions clés</span>" +
+          q.motsCles.map(function (m) { return "<span class=\"notion\">" + esc(m) + "</span>"; }).join("") + "</p>" +
+        "<div class=\"suivi\">" +
+          "<span>☐ En cours</span><span>☐ Presque</span><span>☐ Parfait</span>" +
+          "<span class=\"suivi__date\">revu le ................</span>" +
+        "</div>" +
+      "</article>";
+    }).join("");
+
+    return "<section class=\"partie\">" +
+      "<h2 class=\"partie__titre\"><span>Partie " + p + "</span>" + PARTIES[p] + "</h2>" +
+      "<p class=\"partie__note\">" + liste.length + " questions</p>" + cartes +
+    "</section>";
+  }).join("");
+
+  var off = B.filter(function (q) { return q.statut === "officiel"; }).length;
+  document.getElementById("compte-off").textContent =
+    B.length + " questions · " + off + " formulations officielles, " + (B.length - off) + " questions d'entraînement";
+})();
+</script>
+
+</body>
+</html>
