@@ -131,32 +131,32 @@
     toast("Sauvegarde enregistrée : " + nom);
   }
 
+  function traiterSauvegarde(fichier) {
+    if (!fichier) return;
+    var lecteur = new FileReader();
+    lecteur.onload = function () {
+      var paquet;
+      try { paquet = JSON.parse(String(lecteur.result)); } catch (e) { paquet = null; }
+      var prog = paquet && paquet.progression ? paquet.progression : paquet;
+      if (!prog || typeof prog !== "object" || !prog.questions || typeof prog.questions !== "object") {
+        toast("Ce fichier n'est pas une sauvegarde de l'application.");
+        return;
+      }
+      var nb = Object.keys(prog.questions).length;
+      if (!window.confirm("Remplacer la progression actuelle par cette sauvegarde (" + nb +
+        " question" + (nb > 1 ? "s" : "") + ") ?")) return;
+      remplacerEtat(prog);
+      sauver();
+      afficher("accueil");
+      toast("Sauvegarde restaurée : " + nb + " question" + (nb > 1 ? "s" : "") + ".");
+    };
+    lecteur.readAsText(fichier);
+  }
+
   function importer() {
-    var input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json,application/json";
-    input.addEventListener("change", function () {
-      var fichier = input.files && input.files[0];
-      if (!fichier) return;
-      var lecteur = new FileReader();
-      lecteur.onload = function () {
-        var paquet;
-        try { paquet = JSON.parse(String(lecteur.result)); } catch (e) { paquet = null; }
-        var prog = paquet && paquet.progression ? paquet.progression : paquet;
-        if (!prog || typeof prog !== "object" || !prog.questions || typeof prog.questions !== "object") {
-          toast("Ce fichier n'est pas une sauvegarde de l'application.");
-          return;
-        }
-        var nb = Object.keys(prog.questions).length;
-        if (!window.confirm("Remplacer la progression actuelle par cette sauvegarde (" + nb +
-          " question" + (nb > 1 ? "s" : "") + ") ?")) return;
-        remplacerEtat(prog);
-        sauver();
-        afficher("accueil");
-        toast("Sauvegarde restaurée : " + nb + " question" + (nb > 1 ? "s" : "") + ".");
-      };
-      lecteur.readAsText(fichier);
-    });
+    var input = document.getElementById("fichier-sauvegarde");
+    if (!input) return;
+    input.value = "";
     input.click();
   }
 
@@ -1028,6 +1028,13 @@
       filtrerBanque();
     }
   });
+
+  var champSauvegarde = document.getElementById("fichier-sauvegarde");
+  if (champSauvegarde) {
+    champSauvegarde.addEventListener("change", function () {
+      traiterSauvegarde(champSauvegarde.files && champSauvegarde.files[0]);
+    });
+  }
 
   document.getElementById("modale-fermer").addEventListener("click", fermerModale);
 
