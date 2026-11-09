@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#fbfbfd">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="IFIP Éco">
+  <meta name="format-detection" content="telephone=no">
+  <title>Éco IFiP — révision active</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icone-180.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/icone-512.png">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+  <header class="entete">
+    <div class="entete__int">
+      <a class="marque" href="#" data-nav="accueil">
+        <span class="marque__pastille"></span>
+        <span class="marque__texte">éco<em>ifip</em></span>
+      </a>
+      <nav class="nav">
+        <button class="nav__lien" data-nav="accueil">Accueil</button>
+        <button class="nav__lien" data-nav="banque">Banque</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="principal">
+
+    <!-- ÉCRAN ACCUEIL -->
+    <section id="ecran-accueil" class="ecran actif" aria-label="Tableau de bord"></section>
+
+    <!-- ÉCRAN SÉANCE -->
+    <section id="ecran-seance" class="ecran" aria-label="Séance de révision"></section>
+
+    <!-- ÉCRAN BILAN -->
+    <section id="ecran-bilan" class="ecran" aria-label="Bilan de séance"></section>
+
+    <!-- ÉCRAN BANQUE -->
+    <section id="ecran-banque" class="ecran" aria-label="Banque de questions"></section>
+
+  </main>
+
+  <!-- Fenêtre de consultation d'une réponse -->
+  <dialog id="modale" class="modale">
+    <div class="modale__haut">
+      <span class="etiquette" id="modale-etiquette"></span>
+      <button class="modale__fermer" id="modale-fermer" aria-label="Fermer">&times;</button>
+    </div>
+    <h3 class="modale__question" id="modale-question"></h3>
+    <div class="reponse" id="modale-reponse"></div>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="data/1-courants.js"></script>
+  <script src="data/2-micro.js"></script>
+  <script src="data/3-macro.js"></script>
+  <script src="data/4-finance.js"></script>
+  <script src="data/5-international.js"></script>
+  <script src="data/6-plans.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

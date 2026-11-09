@@ -1,0 +1,25 @@
+{
+  "name": "Révision IFIP Économie",
+  "short_name": "IFIP Éco",
+  "description": "Banque de QRC et révision espacée pour l'épreuve d'économie du concours d'inspecteur DGFiP.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f7fb",
+  "theme_color": "#2b57ff",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "assets/icone-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/icone-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
