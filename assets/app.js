@@ -71,7 +71,7 @@
     return {
       version: 1, questions: {}, seance: null, derniereSeance: null,
       evaluations: 0, jours: [], parJour: {}, preferences: { trous: false },
-      reponses: {}, derniereSauvegarde: null
+      reponses: {}, objectifCelebre: {}, derniereSauvegarde: null
     };
   }
 
@@ -86,6 +86,7 @@
       if (!objet.parJour) objet.parJour = {};
       if (!objet.preferences) objet.preferences = { trous: false };
       if (!objet.reponses || typeof objet.reponses !== "object" || Array.isArray(objet.reponses)) objet.reponses = {};
+      if (!objet.objectifCelebre || typeof objet.objectifCelebre !== "object") objet.objectifCelebre = {};
       return objet;
     } catch (e) {
       return etatVide();
@@ -120,6 +121,7 @@
     if (!etat.preferences) etat.preferences = { trous: false };
     if (!etat.jours) etat.jours = [];
     if (!etat.reponses || typeof etat.reponses !== "object" || Array.isArray(etat.reponses)) etat.reponses = {};
+    if (!etat.objectifCelebre || typeof etat.objectifCelebre !== "object") etat.objectifCelebre = {};
   }
 
   function noterSauvegarde() {
@@ -531,21 +533,46 @@
 
   /* ---------------- moteur de répétition espacée ---------------- */
 
+  /* Chaque fiche porte sa propre facilité (2,5 au départ) : une question dure
+     revient plus tôt, une question solide s'espace plus vite. « Presque »
+     progresse par paliers au lieu de rester bloqué à deux ou trois jours. */
   function planifier(f, niveau) {
     var avant = f.niveau;
     var jour = aujourdhui();
-    var intervalle;
+    var base;
+
+    if (!f.facilite) f.facilite = 2.5;
+    if (!f.presqueSerie) f.presqueSerie = 0;
+    if (!f.rechutes) f.rechutes = 0;
+    if (!f.parfaitsSuite) f.parfaitsSuite = 0;
 
     if (niveau === "encours") {
+      if (avant && avant !== "encours") f.rechutes += 1;
       f.serie = 0;
-      intervalle = 1;
+      f.presqueSerie = 0;
+      f.parfaitsSuite = 0;
+      f.facilite = Math.max(1.3, f.facilite - 0.25);
+      base = 1;
     } else if (niveau === "presque") {
-      f.serie = 0;
-      intervalle = avant === "parfait" ? 3 : (avant === "encours" ? 2 : 3);
+      f.presqueSerie = Math.min(f.presqueSerie + 1, 3);
+      f.serie = Math.max(0, (f.serie || 0) - 1);
+      f.parfaitsSuite = 0;
+      f.facilite = Math.max(1.3, f.facilite - 0.15);
+      base = 2 + 2 * (f.presqueSerie - 1);
     } else {
       f.serie = avant === "parfait" ? Math.min((f.serie || 0) + 1, INTERVALLES_PARFAIT.length - 1) : 0;
-      intervalle = INTERVALLES_PARFAIT[f.serie];
+      f.presqueSerie = 0;
+      f.parfaitsSuite += 1;
+      f.facilite = Math.min(3, f.facilite + 0.1);
+      base = INTERVALLES_PARFAIT[f.serie];
+      if (f.parfaitsSuite >= 2) { f.fragile = false; f.rechutes = 0; }
     }
+
+    if (f.rechutes >= 3) f.fragile = true;
+
+    var intervalle = Math.round(base * (f.facilite / 2.5));
+    intervalle = Math.max(1, Math.min(180, intervalle));
+    if (f.fragile && intervalle > 7) intervalle = 7;
 
     f.niveau = niveau;
     f.nbTravaux = (f.nbTravaux || 0) + 1;
@@ -561,6 +588,36 @@
       var f = etat.questions[q.id];
       return f && f.niveau && f.prochaineRevision && f.prochaineRevision <= j;
     });
+  }
+
+  /* Objectif du jour : la charge à revoir, jamais moins de 5 ni plus de 12.
+     Le nombre déjà travaillé aujourd'hui est déduit au moment de composer. */
+  function objectifJour() {
+    return Math.min(12, Math.max(5, Math.round(questionsARevoir().length / 2)));
+  }
+
+  /* Combien de questions nouvelles par jour récemment, et quand la banque
+     sera entièrement vue à ce rythme. */
+  function projectionCouverture() {
+    var restant = BANQUE.length - bilanGlobal().travailles;
+    if (restant <= 0) return null;
+
+    var premiers = {};
+    BANQUE.forEach(function (q) {
+      var f = etat.questions[q.id];
+      if (f && f.historique && f.historique.length) {
+        var d = f.historique[0].jour;
+        premiers[d] = (premiers[d] || 0) + 1;
+      }
+    });
+
+    var total = 0;
+    for (var i = 0; i < 7; i++) total += premiers[dansNJours(-i)] || 0;
+    if (!total) return null;
+
+    var rythme = total / 7;
+    var jours = Math.max(1, Math.ceil(restant / rythme));
+    return { jours: jours, date: dansNJours(jours), restant: restant, rythme: rythme };
   }
 
   function bilanGlobal() {
@@ -626,40 +683,64 @@
     dues.forEach(function (x) {
       var retard = Math.max(0, ecartJours(x.f.prochaineRevision, j));
       x.score = (base[x.f.niveau] || 0) + Math.min(retard, 14) * 7
-        + (x.f.niveau === "encours" ? 15 : 0) + Math.random() * 8;
+        + (x.f.niveau === "encours" ? 15 : 0) + (x.f.fragile ? 30 : 0) + Math.random() * 8;
     });
     dues.sort(function (a, b) { return b.score - a.score; });
+
+    var faitAujourdHui = (etat.parJour && etat.parJour[j]) || 0;
+    var objectif = objectifJour();
+    var resteObjectif = Math.max(0, objectif - faitAujourdHui);
 
     var nbEnCours = dues.filter(function (x) { return x.f.niveau === "encours"; }).length;
     var maxNouvelles;
     if (nbEnCours >= 8) maxNouvelles = 0;
     else if (nbEnCours >= 4) maxNouvelles = 1;
     else maxNouvelles = Math.max(1, Math.round(n * 0.3));
-    maxNouvelles = Math.min(maxNouvelles, nouvelles.length);
+    maxNouvelles = Math.min(maxNouvelles, resteObjectif, nouvelles.length);
 
-    var choix = dues.slice(0, Math.max(0, n - maxNouvelles)).map(function (x) { return x.q; });
+    plusTard.sort(function (a, b) {
+      return (a.f.prochaineRevision || "9999").localeCompare(b.f.prochaineRevision || "9999");
+    });
+
+    var pool = dues.concat(plusTard, melanger(nouvelles));
+    var choix = [];
     var deja = {};
-    choix.forEach(function (q) { deja[q.id] = true; });
+    var parPartie = {};
+    var fragileSuite = false;
+    var nbNouvelles = 0;
 
-    if (choix.length < n) {
-      plusTard.sort(function (a, b) {
-        return (a.f.prochaineRevision || "9999").localeCompare(b.f.prochaineRevision || "9999");
-      });
-      for (var i = 0; i < plusTard.length && choix.length < n; i++) {
-        if (!deja[plusTard[i].q.id]) { choix.push(plusTard[i].q); deja[plusTard[i].q.id] = true; }
+    /* Deux questions maximum par partie, jamais deux fragiles de suite,
+       et les nouvelles plafonnées par ce qui reste de l'objectif du jour. */
+    function prendre(x, souple) {
+      if (!x || deja[x.q.id]) return false;
+      var estNouvelle = !x.f.niveau;
+      if (estNouvelle && nbNouvelles >= maxNouvelles) return false;
+      if (!souple) {
+        if ((parPartie[x.q.partie] || 0) >= 2) return false;
+        if (x.f.fragile && fragileSuite) return false;
       }
+      choix.push(x.q);
+      deja[x.q.id] = true;
+      parPartie[x.q.partie] = (parPartie[x.q.partie] || 0) + 1;
+      fragileSuite = !!x.f.fragile;
+      if (estNouvelle) nbNouvelles++;
+      return true;
     }
 
-    var candidates = melanger(nouvelles.map(function (x) { return x.q; }));
-    var ajoutees = 0;
-    while (choix.length < n && ajoutees < maxNouvelles && candidates.length) {
-      var q = candidates.shift();
-      if (!deja[q.id]) { choix.push(q); deja[q.id] = true; ajoutees++; }
+    /* échauffement : une question « parfait » due, non fragile */
+    for (var w = 0; w < dues.length && choix.length === 0; w++) {
+      if (dues[w].f.niveau === "parfait" && !dues[w].f.fragile) prendre(dues[w], false);
     }
+
+    for (var i = 0; i < pool.length && choix.length < n; i++) prendre(pool[i], false);
+    for (var k = 0; k < pool.length && choix.length < n; k++) prendre(pool[k], true);
 
     var secours = melanger(BANQUE);
-    for (var k = 0; k < secours.length && choix.length < n; k++) {
-      if (!deja[secours[k].id]) { choix.push(secours[k]); deja[secours[k].id] = true; }
+    for (var f2 = 0; f2 < secours.length && choix.length < n; f2++) {
+      if (!deja[secours[f2].id]) {
+        choix.push(secours[f2]);
+        deja[secours[f2].id] = true;
+      }
     }
 
     /* placer les nouvelles questions au milieu de la séance */
@@ -712,9 +793,12 @@
     if (!deja) {
       etat.evaluations = (etat.evaluations || 0) + 1;
       etat.parJour[jour] = (etat.parJour[jour] || 0) + 1;
-      if (etat.parJour[jour] === OBJECTIF_JOUR) {
+      var objectif = objectifJour();
+      etat.objectifCelebre = etat.objectifCelebre || {};
+      if (etat.parJour[jour] >= objectif && !etat.objectifCelebre[jour]) {
+        etat.objectifCelebre[jour] = true;
         celebrer(18);
-        toast("Objectif du jour atteint : " + OBJECTIF_JOUR + " questions. Bien joué.");
+        toast("Objectif du jour atteint : " + etat.parJour[jour] + " questions. Bien joué.");
       }
     }
     enregistrerJour();
@@ -751,9 +835,10 @@
 
   /* ---------------- rendu : accueil ---------------- */
 
-  function pointsObjectif(fait) {
+  function pointsObjectif(fait, total) {
     var html = "";
-    for (var i = 0; i < OBJECTIF_JOUR; i++) {
+    var n = total || OBJECTIF_JOUR;
+    for (var i = 0; i < n; i++) {
       html += '<span class="objectif__point' + (i < fait ? " plein" : "") + '"></span>';
     }
     return html;
@@ -827,6 +912,8 @@
 
     var serie = serieJours();
     var faitAujourdhui = (etat.parJour && etat.parJour[aujourdhui()]) || 0;
+    var objectif = objectifJour();
+    var projection = projectionCouverture();
 
     zone.innerHTML =
       '<div class="page">' +
@@ -853,11 +940,20 @@
           '<div class="objectif">' +
             '<div class="objectif__ligne">' +
               '<span class="objectif__lab">Objectif du jour</span>' +
-              '<span class="objectif__val">' + faitAujourdhui + " / " + OBJECTIF_JOUR +
+              '<span class="objectif__val">' + faitAujourdhui + " / " + objectif +
                 (serie > 1 ? ' <span class="objectif__serie">' + serie + " jours d'affilée</span>" : "") +
               "</span>" +
             "</div>" +
-            '<div class="objectif__points">' + pointsObjectif(faitAujourdhui) + "</div>" +
+            '<p class="objectif__charge">' + b.aRevoir + " à revoir" +
+              (faitAujourdhui >= objectif
+                ? " · objectif atteint aujourd'hui"
+                : " · encore " + (objectif - faitAujourdhui) + " à faire") +
+            "</p>" +
+            '<div class="objectif__points">' + pointsObjectif(faitAujourdhui, objectif) + "</div>" +
+            (projection
+              ? '<p class="objectif__proj">Au rythme des sept derniers jours, les ' + b.total +
+                " questions seront vues le " + dateCourte(projection.date) + "</p>"
+              : "") +
           "</div>" +
           '<div class="hero__actions">' +
             '<button class="btn btn--primaire" data-action="intelligente">Séance intelligente</button>' +
@@ -957,6 +1053,7 @@
             '<span class="puce puce--p' + q.partie + '">' + PARTIES[q.partie] + "</span>" +
             '<span class="badge badge--' + (q.statut === "officiel" ? "officiel" : "entrainement") + '">' +
               (q.statut === "officiel" ? "Sujet officiel" : "Entraînement") + "</span>" +
+            (f && f.fragile ? '<span class="badge-fragile">fragile</span>' : "") +
           "</div>" +
           '<h2 class="question__texte">' + q.question + "</h2>" +
           (montre
@@ -1155,7 +1252,8 @@
         '<span class="ligne-q__txt">' +
           '<span class="ligne-q__q">' + q.question + "</span>" +
           '<span class="ligne-q__m">' + PARTIES[q.partie] + " · " + niveau +
-            (q.statut === "officiel" ? " · sujet officiel" : "") + "</span>" +
+            (q.statut === "officiel" ? " · sujet officiel" : "") +
+            (f && f.fragile ? ' <span class="badge-fragile">fragile</span>' : "") + "</span>" +
         "</span>" +
         '<span class="ligne-action__fleche">→</span>' +
       "</button>";
@@ -1416,6 +1514,7 @@
         }).join("") +
       "</div>" +
       '<p class="modale__suivi">' +
+        (f.fragile ? '<span class="badge-fragile">fragile</span> ' : "") +
         (actuel
           ? "Revue prévue le " + dateCourte(f.prochaineRevision) + " · " + (f.nbTravaux || 0) +
             " passage" + ((f.nbTravaux || 0) > 1 ? "s" : "")
