@@ -10,6 +10,10 @@
 
   var BANQUE = window.BANQUE || [];
   var CLE = "ifip-eco-revision-v1";
+  var CLE_DRIVE = "ifip-eco-drive-v1";
+  var GOOGLE_CLIENT_ID = "731283926358-viam3ulpgna14flfdeb9m92l8s620hoi.apps.googleusercontent.com";
+  var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+  var DRIVE_FICHIER = "ifip-eco-revision.json";
 
   var NIVEAU = {
     encours: { label: "En cours", aide: "Je ne maîtrise pas encore", classe: "vert", poids: 0 },
@@ -90,7 +94,7 @@
 
   var etat = charger();
 
-  function sauver() {
+  function sauverLocal() {
     try {
       localStorage.setItem(CLE, JSON.stringify(etat));
       return true;
@@ -98,6 +102,13 @@
       toast("Sauvegarde impossible : le stockage du navigateur est plein.");
       return false;
     }
+  }
+
+  /* Chaque changement est écrit localement, puis programmé vers Drive si connecté. */
+  function sauver() {
+    var ok = sauverLocal();
+    if (ok) programmerDrive();
+    return ok;
   }
 
   /* Remplace la progression en place : tous les modules partagent « etat ». */
@@ -133,13 +144,17 @@
   /* Sauvegarde : un fichier JSON.
      Sur iPad, la feuille de partage permet de le déposer dans Drive, Fichiers ou
      iCloud ; sur ordinateur, ou si le partage est refusé, on télécharge le fichier. */
-  function exporter() {
-    var paquet = {
+  function paquetSauvegarde() {
+    return {
       application: "eco-ifip",
       version: 1,
       exporteLe: new Date().toISOString(),
       progression: etat
     };
+  }
+
+  function exporter() {
+    var paquet = paquetSauvegarde();
     var nom = "ifip-eco-sauvegarde-" + aujourdhui() + ".json";
     var blob = new Blob([JSON.stringify(paquet, null, 2)], { type: "application/json" });
 
@@ -191,6 +206,294 @@
     if (!input) return;
     input.value = "";
     input.click();
+  }
+
+  /* ---------------- Google Drive ----------------
+     Même principe que le Championnat des Peluches : Google Identity Services
+     fournit un jeton, puis l'API Drive lit et écrit un unique fichier JSON.
+     L'identifiant client est public et couvre déjà l'origine ironworkout.github.io. */
+
+  var jetonDrive = null;
+  var clientDrive = null;
+  var driveEtat = "hors-ligne";
+  var dernierDrive = null;
+  var synchroEnCours = false;
+  var minuterieDrive = null;
+  var tentativesGis = 0;
+
+  try {
+    var memoInitial = JSON.parse(localStorage.getItem(CLE_DRIVE) || "{}") || {};
+    dernierDrive = memoInitial.derniereSynchro || null;
+  } catch (e) { dernierDrive = null; }
+
+  function memoDrive() {
+    try { return JSON.parse(localStorage.getItem(CLE_DRIVE) || "{}") || {}; } catch (e) { return {}; }
+  }
+
+  function ecrireMemoDrive(m) {
+    try { localStorage.setItem(CLE_DRIVE, JSON.stringify(m)); } catch (e) {}
+  }
+
+  function dateHeure(iso) {
+    var d = new Date(iso);
+    return d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) + " à " +
+      d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function libelleDrive() {
+    if (driveEtat === "synchro") return "Synchronisation…";
+    if (driveEtat === "connecte") return dernierDrive ? "Synchronisé le " + dateHeure(dernierDrive) : "Connecté";
+    if (driveEtat === "erreur") return "Connexion à refaire";
+    if (driveEtat === "indisponible") return "Service Google indisponible";
+    return "Non connecté";
+  }
+
+  function blocDrive() {
+    var boutons = jetonDrive
+      ? '<button class="btn btn--fantome" data-action="drive-sauver">Sauvegarder dans Drive</button>' +
+        '<button class="btn btn--fantome" data-action="drive-charger">Charger depuis Drive</button>'
+      : '<button class="btn btn--fantome" data-action="drive-connecter">Connecter Google Drive</button>';
+
+    return '<div class="drive">' +
+      '<div class="drive__tete">' +
+        '<span class="drive__nom">Google Drive</span>' +
+        '<span class="drive__etat drive__etat--' + driveEtat + '">' + libelleDrive() + "</span>" +
+      "</div>" +
+      '<p class="bloc__aide">La progression est enregistrée dans un fichier <code>' + DRIVE_FICHIER +
+        "</code> de ton Drive, et rechargée automatiquement sur tes autres appareils.</p>" +
+      '<div class="sauvegarde__actions">' + boutons + "</div>" +
+    "</div>";
+  }
+
+  function initDrive() {
+    if (typeof google === "undefined" || !google.accounts || !google.accounts.oauth2) {
+      if (tentativesGis++ < 50) { setTimeout(initDrive, 120); }
+      else { driveEtat = "indisponible"; rendreAccueil(); }
+      return;
+    }
+    if (clientDrive) return;
+
+    try {
+      clientDrive = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: DRIVE_SCOPE,
+        callback: function (reponse) {
+          if (reponse && reponse.access_token) {
+            jetonDrive = reponse.access_token;
+            var m = memoDrive();
+            m.connecte = true;
+            ecrireMemoDrive(m);
+            driveEtat = "connecte";
+            rendreAccueil();
+            apresConnexionDrive();
+          } else {
+            driveEtat = "hors-ligne";
+            rendreAccueil();
+          }
+        },
+        error_callback: function () {
+          driveEtat = "hors-ligne";
+          rendreAccueil();
+        }
+      });
+
+      if (driveEtat !== "connecte") { driveEtat = "pret"; rendreAccueil(); }
+
+      var memo = memoDrive();
+      if (!jetonDrive && memo.connecte) clientDrive.requestAccessToken({ prompt: "" });
+    } catch (e) {
+      driveEtat = "indisponible";
+      rendreAccueil();
+    }
+  }
+
+  function connecterDrive() {
+    if (!clientDrive) {
+      initDrive();
+      toast("Connexion Google en préparation, réessaie dans un instant.");
+      return;
+    }
+    clientDrive.requestAccessToken({ prompt: "" });
+  }
+
+  function apiDrive(url, options) {
+    var opt = options || {};
+    opt.headers = Object.assign({}, opt.headers || {}, { Authorization: "Bearer " + jetonDrive });
+    return fetch(url, opt).then(function (r) {
+      if (r.status === 401 || r.status === 403) {
+        jetonDrive = null;
+        driveEtat = "erreur";
+        var m = memoDrive();
+        m.connecte = false;
+        ecrireMemoDrive(m);
+        rendreAccueil();
+        throw new Error("Session Google expirée, reconnecte le Drive.");
+      }
+      return r;
+    });
+  }
+
+  async function chercherFichierDrive() {
+    var requete = encodeURIComponent("name='" + DRIVE_FICHIER + "' and trashed=false");
+    var r = await apiDrive("https://www.googleapis.com/drive/v3/files?q=" + requete +
+      "&spaces=drive&fields=files(id,name,modifiedTime)&pageSize=10");
+    if (!r.ok) throw new Error("Recherche dans Drive impossible.");
+    var d = await r.json();
+    return d.files && d.files.length ? d.files[0] : null;
+  }
+
+  async function ecrireFichierDrive(id, contenu) {
+    var r = await apiDrive("https://www.googleapis.com/upload/drive/v3/files/" + id + "?uploadType=media", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json; charset=UTF-8" },
+      body: contenu
+    });
+    if (!r.ok) throw new Error("Écriture dans Drive impossible (" + r.status + ").");
+  }
+
+  async function creerFichierDrive(contenu) {
+    var frontiere = "ifip" + Date.now();
+    var corps = "--" + frontiere + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" +
+      JSON.stringify({ name: DRIVE_FICHIER, mimeType: "application/json" }) +
+      "\r\n--" + frontiere + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" +
+      contenu + "\r\n--" + frontiere + "--\r\n";
+
+    var r = await apiDrive("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
+      method: "POST",
+      headers: { "Content-Type": "multipart/related; boundary=" + frontiere },
+      body: corps
+    });
+    if (!r.ok) throw new Error("Création du fichier Drive impossible (" + r.status + ").");
+    var d = await r.json();
+    return d.id;
+  }
+
+  async function lireFichierDrive(id) {
+    var r = await apiDrive("https://www.googleapis.com/drive/v3/files/" + id + "?alt=media");
+    if (!r.ok) throw new Error("Lecture du fichier Drive impossible.");
+    return r.text();
+  }
+
+  async function sauvegarderDansDrive(silencieux) {
+    if (!jetonDrive) {
+      if (!silencieux) { toast("Connecte Google Drive pour enregistrer en ligne."); connecterDrive(); }
+      return false;
+    }
+    if (synchroEnCours) return false;
+
+    synchroEnCours = true;
+    driveEtat = "synchro";
+    rendreAccueil();
+
+    try {
+      var memo = memoDrive();
+      var contenu = JSON.stringify(paquetSauvegarde(), null, 2);
+
+      if (!memo.fileId) {
+        var fichier = await chercherFichierDrive();
+        memo.fileId = fichier ? fichier.id : await creerFichierDrive(contenu);
+        if (fichier) await ecrireFichierDrive(memo.fileId, contenu);
+      } else {
+        await ecrireFichierDrive(memo.fileId, contenu);
+      }
+
+      memo.derniereSynchro = new Date().toISOString();
+      memo.connecte = true;
+      ecrireMemoDrive(memo);
+      dernierDrive = memo.derniereSynchro;
+      driveEtat = "connecte";
+      if (!silencieux) toast("Progression enregistrée dans Drive.");
+      return true;
+    } catch (e) {
+      driveEtat = "erreur";
+      if (!silencieux) toast(String(e.message || e));
+      return false;
+    } finally {
+      synchroEnCours = false;
+      rendreAccueil();
+    }
+  }
+
+  function programmerDrive() {
+    if (!jetonDrive || synchroEnCours) return;
+    clearTimeout(minuterieDrive);
+    minuterieDrive = setTimeout(function () { sauvegarderDansDrive(true); }, 4000);
+  }
+
+  async function apresConnexionDrive() {
+    try {
+      var memo = memoDrive();
+      var id = memo.fileId;
+      if (!id) {
+        var trouve = await chercherFichierDrive();
+        id = trouve && trouve.id;
+      }
+      if (!id) { await sauvegarderDansDrive(false); return; }
+
+      memo.fileId = id;
+      ecrireMemoDrive(memo);
+
+      var texte = await lireFichierDrive(id);
+      var paquet = null;
+      try { paquet = JSON.parse(texte); } catch (e) { paquet = null; }
+      var prog = paquet && paquet.progression ? paquet.progression : null;
+      if (!prog || !prog.questions) { await sauvegarderDansDrive(false); return; }
+
+      var local = bilanGlobal();
+      var localVide = local.travaillees === 0 && !etat.seance && !(etat.jours && etat.jours.length);
+
+      if (localVide) {
+        remplacerEtat(prog);
+        sauverLocal();
+        afficher("accueil");
+        toast("Progression chargée depuis Drive.");
+        return;
+      }
+
+      var charger = window.confirm("Une sauvegarde existe dans Drive (" + Object.keys(prog.questions).length +
+        " questions suivies). La charger et remplacer la progression de cet appareil ?\n\n" +
+        "Annuler garde cet appareil et l'envoie dans Drive.");
+
+      if (charger) {
+        remplacerEtat(prog);
+        sauverLocal();
+        afficher("accueil");
+        toast("Progression chargée depuis Drive.");
+      } else {
+        await sauvegarderDansDrive(false);
+      }
+    } catch (e) {
+      toast(String(e.message || e));
+    }
+  }
+
+  async function chargerDepuisDrive() {
+    if (!jetonDrive) { connecterDrive(); return; }
+    try {
+      var memo = memoDrive();
+      var id = memo.fileId;
+      if (!id) {
+        var trouve = await chercherFichierDrive();
+        id = trouve && trouve.id;
+      }
+      if (!id) { toast("Aucune sauvegarde dans Drive pour l'instant."); return; }
+
+      var texte = await lireFichierDrive(id);
+      var paquet = JSON.parse(texte);
+      var prog = paquet && paquet.progression ? paquet.progression : paquet;
+      if (!prog || !prog.questions) { toast("Le fichier Drive n'est pas une sauvegarde lisible."); return; }
+
+      if (!window.confirm("Remplacer la progression de cet appareil par celle de Drive ?")) return;
+
+      memo.fileId = id;
+      ecrireMemoDrive(memo);
+      remplacerEtat(prog);
+      sauverLocal();
+      afficher("accueil");
+      toast("Progression chargée depuis Drive.");
+    } catch (e) {
+      toast(String(e.message || e));
+    }
   }
 
   function fiche(id) {
@@ -586,6 +889,7 @@
               ? "Dernière sauvegarde le " + dateCourte(etat.derniereSauvegarde) + "."
               : "Aucune sauvegarde exportée pour l'instant.") +
           "</p>" +
+          blocDrive() +
         "</section>" +
 
         '<section class="bloc">' +
@@ -1181,6 +1485,12 @@
       exporter();
     } else if (action === "importer") {
       importer();
+    } else if (action === "drive-connecter") {
+      connecterDrive();
+    } else if (action === "drive-sauver") {
+      sauvegarderDansDrive(false);
+    } else if (action === "drive-charger") {
+      chargerDepuisDrive();
     } else if (action === "suivante") {
       suivante();
     } else if (action === "quitter") {
@@ -1276,4 +1586,5 @@
 
   BANQUE.sort(function (a, b) { return a.partie - b.partie; });
   afficher("accueil");
+  initDrive();
 })();
