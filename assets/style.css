@@ -704,18 +704,23 @@ h1 {
 
 /* ---------- modale ---------- */
 
+/* La boîte garde le display natif quand elle est fermée : la règle flex ne
+   s'applique qu'à l'état ouvert, sinon la fiche resterait affichée en bas. */
 .modale {
   border: 0;
   padding: 0;
   width: min(720px, calc(100vw - 32px));
   max-height: min(86vh, 900px);
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
   border-radius: var(--rayon);
   background: var(--carte);
   box-shadow: 0 30px 80px rgba(14, 18, 32, .28);
   color: var(--encre);
+}
+
+.modale[open] {
+  display: flex;
+  flex-direction: column;
 }
 
 .modale::backdrop { background: rgba(14, 18, 32, .38); backdrop-filter: blur(3px); }
@@ -827,7 +832,7 @@ h1 {
   .seance__tete { gap: 10px; }
   .seance__mode { display: none; }
   .question__texte { font-size: 21px; }
-  .modale .reponse { padding: 14px 18px 22px; max-height: 66vh; }
+  .modale .reponse { padding: 14px 18px 22px; max-height: none; }
   .modale__question { padding: 10px 18px 0; font-size: 18px; }
   .filtres { margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
 }
