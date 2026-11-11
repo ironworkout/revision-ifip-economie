@@ -1376,6 +1376,53 @@
     minuteurToast = setTimeout(function () { el.classList.remove("visible"); }, 2600);
   }
 
+  /* Niveau choisi depuis la Banque : même planification qu'en séance, sans
+     rattachement à une séance, et enregistré comme le reste de la progression. */
+  function definirNiveau(id, niveau) {
+    var q = parId(id);
+    if (!q || !NIVEAU[niveau]) return;
+
+    var f = fiche(id);
+    planifier(f, niveau);
+    enregistrerJour();
+    sauver();
+
+    rendreNiveauxModale(q);
+    filtrerBanque();
+    toast("Niveau enregistré : " + NIVEAU[niveau].label +
+      (f.prochaineRevision ? " · revue le " + dateCourte(f.prochaineRevision) : ""));
+  }
+
+  function rendreNiveauxModale(q) {
+    var zone = document.getElementById("modale-niveaux");
+    if (!zone) return;
+
+    var f = etat.questions[q.id] || {};
+    var actuel = f.niveau || null;
+
+    zone.innerHTML =
+      '<p class="niveaux__titre">Ton niveau</p>' +
+      '<div class="niveaux__grille">' +
+        ["encours", "presque", "parfait"].map(function (n) {
+          var info = NIVEAU[n];
+          var choisi = actuel === n;
+          return '<button class="niveau niveau--' + info.classe + (choisi ? " choisi" : "") +
+            '" data-action="niveau-banque" data-id="' + q.id + '" data-niveau="' + n +
+            '" aria-pressed="' + (choisi ? "true" : "false") + '">' +
+            '<span class="niveau__t">' + info.label + "</span>" +
+            '<span class="niveau__s">' + info.aide + "</span>" +
+            (choisi ? '<span class="niveau__check" aria-hidden="true">✓</span>' : "") +
+          "</button>";
+        }).join("") +
+      "</div>" +
+      '<p class="modale__suivi">' +
+        (actuel
+          ? "Revue prévue le " + dateCourte(f.prochaineRevision) + " · " + (f.nbTravaux || 0) +
+            " passage" + ((f.nbTravaux || 0) > 1 ? "s" : "")
+          : "Pas encore évaluée. Choisis un niveau pour la planifier.") +
+      "</p>";
+  }
+
   function ouvrirModale(id) {
     var q = parId(id);
     if (!q) return;
@@ -1385,6 +1432,7 @@
     document.getElementById("modale-question").textContent = q.question;
     modaleId = q.id;
     document.getElementById("modale-reponse").innerHTML = rendreReponse(q, { edition: editId === q.id, compacte: true });
+    rendreNiveauxModale(q);
     if (!modale.hasAttribute("open")) {
       if (typeof modale.showModal === "function") modale.showModal();
       else modale.setAttribute("open", "");
@@ -1431,6 +1479,11 @@
 
     if (cible.hasAttribute("data-question")) {
       ouvrirModale(cible.getAttribute("data-question"));
+      return;
+    }
+
+    if (cible.getAttribute("data-action") === "niveau-banque") {
+      definirNiveau(cible.getAttribute("data-id"), cible.getAttribute("data-niveau"));
       return;
     }
 

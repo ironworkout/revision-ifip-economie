@@ -709,6 +709,9 @@ h1 {
   padding: 0;
   width: min(720px, calc(100vw - 32px));
   max-height: min(86vh, 900px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-radius: var(--rayon);
   background: var(--carte);
   box-shadow: 0 30px 80px rgba(14, 18, 32, .28);
@@ -744,7 +747,17 @@ h1 {
   letter-spacing: -.02em;
 }
 
-.modale .reponse { padding: 16px 24px 26px; overflow-y: auto; max-height: 62vh; }
+.modale .reponse { padding: 16px 24px 26px; overflow-y: auto; flex: 1 1 auto; min-height: 0; max-height: none; }
+.modale__haut, .modale__question, .modale__niveaux { flex: none; }
+
+.modale__niveaux {
+  padding: 14px 24px 20px;
+  border-top: 1px solid var(--trait);
+  background: var(--carte);
+}
+
+.modale__niveaux .niveaux__titre { margin-bottom: 10px; }
+.modale__suivi { margin-top: 10px; font-size: 12px; color: var(--encre-3); }
 .modale .reponse p { font-size: 15.5px; }
 
 /* ---------- toast ---------- */
