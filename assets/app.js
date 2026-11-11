@@ -34,6 +34,8 @@
   var filtrePartie = 0;
   var filtreStatut = "toutes";
   var recherche = "";
+  var editId = null;
+  var modaleId = null;
 
   /* ---------------- dates ---------------- */
 
@@ -65,7 +67,7 @@
     return {
       version: 1, questions: {}, seance: null, derniereSeance: null,
       evaluations: 0, jours: [], parJour: {}, preferences: { trous: false },
-      derniereSauvegarde: null
+      reponses: {}, derniereSauvegarde: null
     };
   }
 
@@ -79,6 +81,7 @@
       for (var k in base) if (!(k in objet)) objet[k] = base[k];
       if (!objet.parJour) objet.parJour = {};
       if (!objet.preferences) objet.preferences = { trous: false };
+      if (!objet.reponses || typeof objet.reponses !== "object" || Array.isArray(objet.reponses)) objet.reponses = {};
       return objet;
     } catch (e) {
       return etatVide();
@@ -105,6 +108,7 @@
     if (!etat.parJour) etat.parJour = {};
     if (!etat.preferences) etat.preferences = { trous: false };
     if (!etat.jours) etat.jours = [];
+    if (!etat.reponses || typeof etat.reponses !== "object" || Array.isArray(etat.reponses)) etat.reponses = {};
   }
 
   /* Sauvegarde : un fichier JSON téléchargé, à garder dans iCloud ou sur le PC. */
@@ -631,13 +635,7 @@
     if (montre) {
       html +=
         '<div class="carte carte--reponse">' +
-          '<div class="reponse__barre">' +
-            '<span class="reponse__legende">Structure de la réponse</span>' +
-            '<button class="mini-btn" data-action="trous">' +
-              (etat.preferences && etat.preferences.trous ? "Afficher les termes" : "Masquer les termes") +
-            "</button>" +
-          "</div>" +
-          '<div class="reponse">' + rendreReponse(q) + "</div>" +
+          '<div class="reponse">' + rendreReponse(q, { edition: editId === q.id }) + "</div>" +
           '<div class="niveaux">' +
             '<p class="niveaux__titre">' + (deja ? "Ton niveau pour cette question" : "Où en es-tu ?") + "</p>" +
             '<div class="niveaux__grille">' +
@@ -853,35 +851,172 @@
 
   /* Réponse découpée en blocs : introduction, développements numérotés, conclusion.
      Le mode « trous » masque les termes en gras pour forcer le rappel actif. */
-  function rendreReponse(q) {
+  var ICONE_CRAYON =
+    '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M4.5 19.5h4l10-10a2.12 2.12 0 0 0-3-3l-10 10v3z"/><path d="M14 6.5l3 3"/></svg>';
+
+  var ICONE_PARTAGE =
+    '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M12 15V3.5"/><path d="M8.5 7L12 3.5 15.5 7"/>' +
+    '<path d="M5.5 13.5v6a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-6"/></svg>';
+
+  /* Réponse personnalisée : même nombre de blocs que l'original, pour garder le plan. */
+  function reponsePerso(q) {
+    var r = etat.reponses && etat.reponses[q.id];
+    if (!r || !r.blocs || r.blocs.length !== q.reponse.length) return null;
+    return r;
+  }
+
+  function blocsReponse(q) {
+    var perso = reponsePerso(q);
+    var textes = perso ? perso.blocs : q.reponse;
     var numeros = 0;
-    var trous = etat.preferences && etat.preferences.trous;
-
-    var blocs = q.reponse.map(function (p, i) {
+    return textes.map(function (p, i) {
       var role = roleBloc(q, i);
-      var libelle;
-      if (role === "intro") libelle = "Introduction";
-      else if (role === "conclusion") libelle = "Conclusion";
-      else libelle = String(++numeros);
+      var libelle = role === "intro" ? "Introduction" : (role === "conclusion" ? "Conclusion" : String(++numeros));
+      return { role: role, libelle: libelle, texte: p };
+    });
+  }
 
-      var contenu = texteRiche(p);
+  function rendreReponse(q, options) {
+    var opts = options || {};
+    var edition = !!opts.edition;
+    var perso = reponsePerso(q);
+    var trous = etat.preferences && etat.preferences.trous && !edition;
+    var blocs = blocsReponse(q);
+
+    var barre =
+      '<div class="reponse__barre">' +
+        '<span class="reponse__legende">' + (edition ? "Mode édition" : "Structure de la réponse") + "</span>" +
+        '<div class="reponse__outils">' +
+          (edition
+            ? '<button type="button" class="mini-btn mini-btn--plein" data-action="enregistrer-reponse" data-id="' + q.id + '">Enregistrer</button>' +
+              '<button type="button" class="mini-btn" data-action="annuler-edition">Annuler</button>' +
+              (perso ? '<button type="button" class="mini-btn mini-btn--discret" data-action="reinitialiser-reponse" data-id="' + q.id + '">Origine</button>' : "")
+            : (perso ? '<span class="reponse__marque" title="Réponse annotée par toi">annotée</span>' : "") +
+              '<button type="button" class="mini-btn" data-action="trous">' +
+                (etat.preferences && etat.preferences.trous ? "Afficher les termes" : "Masquer les termes") + "</button>" +
+              '<button type="button" class="outil" data-action="editer" data-id="' + q.id + '" aria-label="Modifier la réponse" title="Modifier la réponse">' + ICONE_CRAYON + "</button>" +
+              '<button type="button" class="outil" data-action="partager" data-id="' + q.id + '" aria-label="Copier la réponse pour une IA" title="Copier la réponse pour une IA">' + ICONE_PARTAGE + "</button>") +
+        "</div>" +
+      "</div>";
+
+    var aide = edition
+      ? '<p class="edition__aide">Corrige directement le texte ; les passages en gras le restent. « Origine » rétablit la réponse fournie.</p>'
+      : "";
+
+    var corps = blocs.map(function (b, i) {
+      var contenu = texteRiche(b.texte);
       if (trous) {
         contenu = contenu.replace(/<strong>([\s\S]+?)<\/strong>/g, function (m, mot) {
           var cache = mot.replace(/[^\s]/g, "·");
           return '<button type="button" class="trou" data-mot="' + mot.replace(/"/g, "&quot;") +
             '" aria-label="Afficher le terme masqué">' + cache + "</button>";
         });
-      }          return '<div class="bloc-texte bloc-texte--' + role + '" style="animation-delay:' + (i * 70) + 'ms">' +
-        '<span class="bloc-texte__label">' + libelle + "</span>" +
-        "<p>" + contenu + "</p>" +
+      }
+      return '<div class="bloc-texte bloc-texte--' + b.role + (edition ? " bloc-texte--edition" : "") + '" style="animation-delay:' + (i * 70) + 'ms">' +
+        '<span class="bloc-texte__label">' + b.libelle + "</span>" +
+        "<p" + (edition ? ' contenteditable="true" spellcheck="true" data-bloc="' + i + '"' : "") + ">" + contenu + "</p>" +
       "</div>";
     }).join("");
 
-    if (!q.motsCles || !q.motsCles.length) return blocs;
-    return blocs +
-      '<div class="notions"><span class="notions__titre">Notions clés</span>' +
-        q.motsCles.map(function (m) { return '<span class="notion">' + echapper(m) + "</span>"; }).join("") +
-      "</div>";
+    var notions = (q.motsCles && q.motsCles.length)
+      ? '<div class="notions"><span class="notions__titre">Notions clés</span>' +
+        q.motsCles.map(function (m) { return '<span class="notion">' + echapper(m) + "</span>"; }).join("") + "</div>"
+      : "";
+
+    return barre + aide + corps + notions;
+  }
+
+  /* Relit le HTML édité et le reconvertit en texte simple balisé **gras** / *italique*. */
+  function marqueurs(noeud) {
+    var sortie = "";
+    Array.prototype.forEach.call(noeud.childNodes, function (n) {
+      if (n.nodeType === 3) { sortie += n.nodeValue; return; }
+      if (n.nodeType !== 1) return;
+      var t = n.tagName.toLowerCase();
+      if (t === "br") { sortie += " "; return; }
+      var dedans = marqueurs(n).trim();
+      if (!dedans) return;
+      if (t === "strong" || t === "b") sortie += "**" + dedans + "**";
+      else if (t === "em" || t === "i") sortie += "*" + dedans + "*";
+      else if (t === "div" || t === "p") sortie += " " + dedans + " ";
+      else sortie += dedans;
+    });
+    return sortie;
+  }
+
+  function enregistrerReponse(id) {
+    var q = parId(id);
+    if (!q) return;
+    var paras = document.querySelectorAll('.reponse p[data-bloc][contenteditable="true"]');
+    if (!paras.length) { editId = null; rafraichirReponse(); return; }
+
+    var textes = [];
+    var vide = false;
+    Array.prototype.forEach.call(paras, function (p) {
+      var texte = marqueurs(p).replace(/\s+/g, " ").trim();
+      if (!texte) vide = true;
+      textes.push(texte);
+    });
+    if (vide) { toast("Un paragraphe est vide : complète-le ou annule."); return; }
+
+    if (!etat.reponses) etat.reponses = {};
+    etat.reponses[id] = { blocs: textes, maj: new Date().toISOString() };
+    editId = null;
+    sauver();
+    rafraichirReponse();
+    toast("Réponse annotée et enregistrée.");
+  }
+
+  function rafraichirReponse() {
+    var modale = document.getElementById("modale");
+    if (modale.hasAttribute("open") && modaleId) { ouvrirModale(modaleId); return; }
+    if (document.getElementById("ecran-seance").classList.contains("actif")) rendreSeance();
+  }
+
+  function textePourIA(q) {
+    var corps = blocsReponse(q).map(function (b) { return b.libelle + " — " + b.texte; }).join("\n\n");
+    return "Contexte : je prépare l'épreuve n° 2 du concours d'inspecteur des finances publiques (analyse économique). " +
+      "Elle comporte 3 à 4 questions à réponses courtes en 2 h 30, et chaque réponse doit tenir en une quinzaine de lignes manuscrites, " +
+      "en français simple mais précis, sans rubriques artificielles.\n\n" +
+      "Question : " + q.question + "\n\n" +
+      "Réponse type à restituer :\n\n" + corps + "\n\n" +
+      (q.motsCles && q.motsCles.length ? "Notions attendues : " + q.motsCles.join(" · ") + "\n\n" : "") +
+      "Peux-tu m'en proposer une version plus simple et une version plus complète, en gardant le même plan et à peu près la même longueur ? " +
+      "Termine par les notions que le correcteur attend le plus.";
+  }
+
+  function copieSecours(texte, retour) {
+    var zone = document.createElement("textarea");
+    zone.value = texte;
+    zone.setAttribute("readonly", "");
+    zone.style.position = "fixed";
+    zone.style.top = "-2000px";
+    document.body.appendChild(zone);
+    zone.select();
+    zone.setSelectionRange(0, texte.length);
+    var reussi = false;
+    try { reussi = document.execCommand("copy"); } catch (e) { reussi = false; }
+    zone.remove();
+    retour(reussi);
+  }
+
+  function partagerReponse(id) {
+    var q = parId(id);
+    if (!q) return;
+    var texte = textePourIA(q);
+    var fini = function (ok) {
+      if (ok) toast("Réponse copiée. Colle-la dans ton IA, puis demande plus simple ou plus complet.");
+      else toast("Copie automatique impossible : sélectionne le texte et copie-le à la main.");
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+      navigator.clipboard.writeText(texte).then(function () { fini(true); }, function () { copieSecours(texte, fini); });
+    } else {
+      copieSecours(texte, fini);
+    }
   }
 
   function celebrer(nombre) {
@@ -915,9 +1050,12 @@
     document.getElementById("modale-etiquette").textContent =
       PARTIES[q.partie] + (q.statut === "officiel" ? " · sujet officiel" : " · entraînement");
     document.getElementById("modale-question").textContent = q.question;
-    document.getElementById("modale-reponse").innerHTML = rendreReponse(q);
-    if (typeof modale.showModal === "function") modale.showModal();
-    else modale.setAttribute("open", "");
+    modaleId = q.id;
+    document.getElementById("modale-reponse").innerHTML = rendreReponse(q, { edition: editId === q.id, compacte: true });
+    if (!modale.hasAttribute("open")) {
+      if (typeof modale.showModal === "function") modale.showModal();
+      else modale.setAttribute("open", "");
+    }
     document.getElementById("modale-reponse").scrollTop = 0;
   }
 
@@ -989,7 +1127,24 @@
     } else if (action === "trous") {
       etat.preferences.trous = !etat.preferences.trous;
       sauver();
-      rendreSeance();
+      rafraichirReponse();
+    } else if (action === "editer") {
+      editId = cible.getAttribute("data-id") || null;
+      if (etat.preferences && etat.preferences.trous) { etat.preferences.trous = false; sauver(); }
+      rafraichirReponse();
+    } else if (action === "annuler-edition") {
+      editId = null;
+      rafraichirReponse();
+    } else if (action === "enregistrer-reponse") {
+      enregistrerReponse(cible.getAttribute("data-id"));
+    } else if (action === "reinitialiser-reponse") {
+      if (etat.reponses) delete etat.reponses[cible.getAttribute("data-id")];
+      editId = null;
+      sauver();
+      rafraichirReponse();
+      toast("Réponse d'origine rétablie.");
+    } else if (action === "partager") {
+      partagerReponse(cible.getAttribute("data-id"));
     } else if (action === "reveler") {
       revele = true;
       rendreSeance();
@@ -1042,7 +1197,26 @@
     if (e.target === this) fermerModale();
   });
 
+  document.addEventListener("paste", function (e) {
+    var cible = e.target;
+    if (!cible || !cible.isContentEditable) return;
+    var texte = e.clipboardData ? e.clipboardData.getData("text/plain") : "";
+    if (!texte) return;
+    e.preventDefault();
+    try {
+      document.execCommand("insertText", false, texte);
+    } catch (err) {
+      var sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return;
+      var plage = sel.getRangeAt(0);
+      plage.deleteContents();
+      plage.insertNode(document.createTextNode(texte));
+      sel.collapseToEnd();
+    }
+  });
+
   document.addEventListener("keydown", function (e) {
+    if (editId || (e.target && e.target.isContentEditable)) return;
     var seanceActive = document.getElementById("ecran-seance").classList.contains("actif");
     if (!seanceActive) return;
     var s = etat.seance;
