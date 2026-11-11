@@ -1097,6 +1097,7 @@
 
     html += "</div>";
     zone.innerHTML = html;
+    preparerEditeur();
   }
 
   function dateCourte(iso) {
@@ -1293,10 +1294,11 @@
     '<path d="M12 15V3.5"/><path d="M8.5 7L12 3.5 15.5 7"/>' +
     '<path d="M5.5 13.5v6a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-6"/></svg>';
 
-  /* Réponse personnalisée : même nombre de blocs que l'original, pour garder le plan. */
+  /* Réponse personnalisée : elle peut contenir plus ou moins de paragraphes que
+     l'original. Les rôles sont alors premiers = introduction, derniers = conclusion. */
   function reponsePerso(q) {
     var r = etat.reponses && etat.reponses[q.id];
-    if (!r || !r.blocs || r.blocs.length !== q.reponse.length) return null;
+    if (!r || !r.blocs || !r.blocs.length) return null;
     return r;
   }
 
@@ -1305,7 +1307,14 @@
     var textes = perso ? perso.blocs : q.reponse;
     var numeros = 0;
     return textes.map(function (p, i) {
-      var role = roleBloc(q, i);
+      var role;
+      if (perso) {
+        if (textes.length === 1 || i === 0) role = "intro";
+        else if (i === textes.length - 1) role = "conclusion";
+        else role = "dev";
+      } else {
+        role = roleBloc(q, i);
+      }
       var libelle = role === "intro" ? "Introduction" : (role === "conclusion" ? "Conclusion" : String(++numeros));
       return { role: role, libelle: libelle, texte: p };
     });
@@ -1335,8 +1344,21 @@
       "</div>";
 
     var aide = edition
-      ? '<p class="edition__aide">Corrige directement le texte ; les passages en gras le restent. « Origine » rétablit la réponse fournie.</p>'
+      ? '<p class="edition__aide">Colle ta nouvelle version à la place du texte : chaque paragraphe séparé par une ligne vide devient un bloc, et les **mots entre astérisques** restent surlignés. « Origine » rétablit la réponse fournie.</p>'
       : "";
+
+    var notions = (q.motsCles && q.motsCles.length)
+      ? '<div class="notions"><span class="notions__titre">Notions clés</span>' +
+        q.motsCles.map(function (m) { return '<span class="notion">' + echapper(m) + "</span>"; }).join("") + "</div>"
+      : "";
+
+    if (edition) {
+      var brut = blocs.map(function (b) { return b.texte; }).join("\n\n");
+      return barre + aide +
+        '<textarea class="editeur" id="editeur-reponse" spellcheck="true" aria-label="Texte de la réponse">' +
+          echapper(brut) +
+        "</textarea>" + notions;
+    }
 
     var corps = blocs.map(function (b, i) {
       var contenu = texteRiche(b.texte);
@@ -1347,59 +1369,57 @@
             '" aria-label="Afficher le terme masqué">' + cache + "</button>";
         });
       }
-      return '<div class="bloc-texte bloc-texte--' + b.role + (edition ? " bloc-texte--edition" : "") + '" style="animation-delay:' + (i * 70) + 'ms">' +
+      return '<div class="bloc-texte bloc-texte--' + b.role + '" style="animation-delay:' + (i * 70) + 'ms">' +
         '<span class="bloc-texte__label">' + b.libelle + "</span>" +
-        "<p" + (edition ? ' contenteditable="true" spellcheck="true" data-bloc="' + i + '"' : "") + ">" + contenu + "</p>" +
+        "<p>" + contenu + "</p>" +
       "</div>";
     }).join("");
-
-    var notions = (q.motsCles && q.motsCles.length)
-      ? '<div class="notions"><span class="notions__titre">Notions clés</span>' +
-        q.motsCles.map(function (m) { return '<span class="notion">' + echapper(m) + "</span>"; }).join("") + "</div>"
-      : "";
 
     return barre + aide + corps + notions;
   }
 
-  /* Relit le HTML édité et le reconvertit en texte simple balisé **gras** / *italique*. */
-  function marqueurs(noeud) {
-    var sortie = "";
-    Array.prototype.forEach.call(noeud.childNodes, function (n) {
-      if (n.nodeType === 3) { sortie += n.nodeValue; return; }
-      if (n.nodeType !== 1) return;
-      var t = n.tagName.toLowerCase();
-      if (t === "br") { sortie += " "; return; }
-      var dedans = marqueurs(n).trim();
-      if (!dedans) return;
-      if (t === "strong" || t === "b") sortie += "**" + dedans + "**";
-      else if (t === "em" || t === "i") sortie += "*" + dedans + "*";
-      else if (t === "div" || t === "p") sortie += " " + dedans + " ";
-      else sortie += dedans;
-    });
-    return sortie;
+  /* Découpe le texte collé : une ligne vide sépare deux paragraphes. Les lignes
+     qui ne portent qu'un intitulé (Introduction, 2., Conclusion) sont retirées. */
+  function decouperParagraphes(texte) {
+    return String(texte)
+      .replace(/\r\n?/g, "\n")
+      .split(/\n\s*\n/)
+      .map(function (bloc) {
+        return bloc
+          .split("\n")
+          .filter(function (ligne) {
+            return !/^\s*(\*\*)?(introduction|conclusion|\d{1,2}\s*[.)]?)(\*\*)?\s*:?\s*$/i.test(ligne);
+          })
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+      })
+      .filter(function (b) { return b.length > 0; });
   }
 
   function enregistrerReponse(id) {
     var q = parId(id);
-    if (!q) return;
-    var paras = document.querySelectorAll('.reponse p[data-bloc][contenteditable="true"]');
-    if (!paras.length) { editId = null; rafraichirReponse(); return; }
+    var zone = document.querySelector(".editeur");
+    if (!q || !zone) { editId = null; rafraichirReponse(); return; }
 
-    var textes = [];
-    var vide = false;
-    Array.prototype.forEach.call(paras, function (p) {
-      var texte = marqueurs(p).replace(/\s+/g, " ").trim();
-      if (!texte) vide = true;
-      textes.push(texte);
-    });
-    if (vide) { toast("Un paragraphe est vide : complète-le ou annule."); return; }
+    var blocs = decouperParagraphes(zone.value);
+    if (!blocs.length) { toast("Le texte est vide : colle une réponse ou annule."); return; }
 
     if (!etat.reponses) etat.reponses = {};
-    etat.reponses[id] = { blocs: textes, maj: new Date().toISOString() };
+    etat.reponses[id] = { blocs: blocs, maj: new Date().toISOString() };
     editId = null;
     sauver();
     rafraichirReponse();
-    toast("Réponse annotée et enregistrée.");
+    toast("Réponse enregistrée · " + blocs.length + " paragraphe" + (blocs.length > 1 ? "s" : ""));
+  }
+
+  /* À l'ouverture de l'éditeur, tout le texte est sélectionné : un collage
+     remplace directement l'ancienne version. */
+  function preparerEditeur() {
+    var zone = document.querySelector(".editeur");
+    if (!zone) return;
+    zone.focus();
+    try { zone.setSelectionRange(0, zone.value.length); } catch (e) {}
   }
 
   function rafraichirReponse() {
@@ -1537,9 +1557,11 @@
       else modale.setAttribute("open", "");
     }
     document.getElementById("modale-reponse").scrollTop = 0;
+    preparerEditeur();
   }
 
   function fermerModale() {
+    editId = null;
     var modale = document.getElementById("modale");
     if (typeof modale.close === "function") modale.close();
     else modale.removeAttribute("open");
@@ -1686,24 +1708,6 @@
 
   document.getElementById("modale").addEventListener("click", function (e) {
     if (e.target === this) fermerModale();
-  });
-
-  document.addEventListener("paste", function (e) {
-    var cible = e.target;
-    if (!cible || !cible.isContentEditable) return;
-    var texte = e.clipboardData ? e.clipboardData.getData("text/plain") : "";
-    if (!texte) return;
-    e.preventDefault();
-    try {
-      document.execCommand("insertText", false, texte);
-    } catch (err) {
-      var sel = window.getSelection();
-      if (!sel || !sel.rangeCount) return;
-      var plage = sel.getRangeAt(0);
-      plage.deleteContents();
-      plage.insertNode(document.createTextNode(texte));
-      sel.collapseToEnd();
-    }
   });
 
   document.addEventListener("keydown", function (e) {
