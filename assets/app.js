@@ -111,7 +111,28 @@
     if (!etat.reponses || typeof etat.reponses !== "object" || Array.isArray(etat.reponses)) etat.reponses = {};
   }
 
-  /* Sauvegarde : un fichier JSON téléchargé, à garder dans iCloud ou sur le PC. */
+  function noterSauvegarde() {
+    etat.derniereSauvegarde = aujourdhui();
+    sauver();
+    rendreAccueil();
+  }
+
+  function telechargerFichier(blob, nom) {
+    var url = URL.createObjectURL(blob);
+    var lien = document.createElement("a");
+    lien.href = url;
+    lien.download = nom;
+    document.body.appendChild(lien);
+    lien.click();
+    lien.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    noterSauvegarde();
+    toast("Sauvegarde téléchargée : " + nom);
+  }
+
+  /* Sauvegarde : un fichier JSON.
+     Sur iPad, la feuille de partage permet de le déposer dans Drive, Fichiers ou
+     iCloud ; sur ordinateur, ou si le partage est refusé, on télécharge le fichier. */
   function exporter() {
     var paquet = {
       application: "eco-ifip",
@@ -121,18 +142,26 @@
     };
     var nom = "ifip-eco-sauvegarde-" + aujourdhui() + ".json";
     var blob = new Blob([JSON.stringify(paquet, null, 2)], { type: "application/json" });
-    var url = URL.createObjectURL(blob);
-    var lien = document.createElement("a");
-    lien.href = url;
-    lien.download = nom;
-    document.body.appendChild(lien);
-    lien.click();
-    lien.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
-    etat.derniereSauvegarde = aujourdhui();
-    sauver();
-    rendreAccueil();
-    toast("Sauvegarde enregistrée : " + nom);
+
+    var fichier = null;
+    try { fichier = new File([blob], nom, { type: "application/json" }); } catch (e) { fichier = null; }
+
+    if (fichier && navigator.share && navigator.canShare && navigator.canShare({ files: [fichier] })) {
+      navigator.share({
+        files: [fichier],
+        title: "Sauvegarde révision IFiP",
+        text: "Progression de révision, à conserver dans Drive ou Fichiers."
+      }).then(function () {
+        noterSauvegarde();
+        toast("Sauvegarde envoyée : choisis Drive dans la feuille de partage.");
+      }, function (err) {
+        if (err && err.name === "AbortError") { toast("Sauvegarde annulée."); return; }
+        telechargerFichier(blob, nom);
+      });
+      return;
+    }
+
+    telechargerFichier(blob, nom);
   }
 
   function traiterSauvegarde(fichier) {
@@ -547,7 +576,7 @@
 
         '<section class="bloc">' +
           '<h2 class="bloc__titre">Sauvegarde</h2>' +
-          '<p class="bloc__aide">La progression est déjà enregistrée dans le navigateur. Un fichier de secours permet de changer d\'appareil ou de récupérer après un effacement.</p>' +
+          '<p class="bloc__aide">La progression est déjà enregistrée dans le navigateur. « Sauvegarder » crée un fichier de secours : sur iPad, la feuille de partage permet de le déposer dans Drive ou Fichiers, sur ordinateur il se télécharge. Ce fichier permet de changer d\'appareil ou de récupérer après un effacement.</p>' +
           '<div class="sauvegarde__actions">' +
             '<button class="btn btn--fantome" data-action="exporter">Sauvegarder</button>' +
             '<button class="btn btn--fantome" data-action="importer">Restaurer</button>' +
