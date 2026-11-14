@@ -645,28 +645,24 @@
     return ecartJours(aujourdhui(), dateConcours());
   }
 
-  function decouvertesAujourdhui() {
-    var j = aujourdhui(), n = 0;
+  /* Taux de réussite des douze dernières évaluations : parfait = 1,
+     presque = 0,6, en cours = 0. Il pilote la place laissée aux nouveautés. */
+  function reussiteRecente() {
+    var notes = [];
     BANQUE.forEach(function (q) {
       var f = etat.questions[q.id];
-      if (f && f.historique && f.historique.length && f.historique[0].jour === j) n++;
+      if (f && f.historique) {
+        f.historique.forEach(function (h) { notes.push(h); });
+      }
     });
-    return n;
-  }
+    if (!notes.length) return null;
 
-  /* Combien de questions neuves voir chaque jour pour couvrir la banque avant
-     l'épreuve, sans dépasser trois par jour. */
-  function planDecouverte() {
-    var restantes = BANQUE.length - bilanGlobal().travailles;
-    var jours = joursAvantConcours();
-    if (restantes <= 0 || jours <= 0) return 0;
-    return Math.min(3, Math.max(1, Math.ceil(restantes / jours)));
-  }
-
-  function quotaDecouverte() {
-    var plan = planDecouverte();
-    if (!plan) return 0;
-    return Math.max(0, plan - decouvertesAujourdhui());
+    notes.sort(function (a, b) { return (a.jour || "").localeCompare(b.jour || ""); });
+    var poids = { parfait: 1, presque: 0.6, encours: 0 };
+    var derniers = notes.slice(-12);
+    var somme = 0;
+    derniers.forEach(function (h) { somme += poids[h.apres] || 0; });
+    return somme / derniers.length;
   }
 
   function bilanGlobal() {
@@ -736,9 +732,11 @@
     });
     dues.sort(function (a, b) { return b.score - a.score; });
 
-    /* Une place réservée aux nouvelles questions : la découverte ne peut plus
-       être affamée par les révisions dues, surtout à l'approche du concours. */
-    var maxNouvelles = Math.min(quotaDecouverte(), n, nouvelles.length);
+    /* La découverte suit les résultats : beaucoup de réussites ouvrent plus de
+       places aux questions neuves, les échecs les referment. */
+    var taux = reussiteRecente();
+    var partNouvelles = taux === null ? 0.4 : (taux >= 0.85 ? 0.6 : (taux >= 0.65 ? 0.4 : (taux >= 0.45 ? 0.2 : 0)));
+    var maxNouvelles = Math.min(nouvelles.length, Math.max(0, Math.round(n * partNouvelles)));
 
     plusTard.sort(function (a, b) {
       return (a.f.prochaineRevision || "9999").localeCompare(b.f.prochaineRevision || "9999");
@@ -961,6 +959,7 @@
     var faitAujourdhui = (etat.parJour && etat.parJour[aujourdhui()]) || 0;
     var objectif = objectifJour();
     var projection = projectionCouverture();
+    var tauxReussite = reussiteRecente();
 
     zone.innerHTML =
       '<div class="page">' +
@@ -1008,8 +1007,9 @@
             "</div>" +
             '<p class="objectif__decouverte">' +
               (b.total - b.travailles > 0
-                ? (b.total - b.travailles) + " à découvrir · " + planDecouverte() + " par jour"
+                ? (b.total - b.travailles) + " à découvrir"
                 : "Toutes les questions ont été vues au moins une fois") +
+              (tauxReussite === null ? "" : " · réussite récente " + Math.round(tauxReussite * 100) + " %") +
             "</p>" +
           "</div>" +
           '<div class="hero__actions">' +
