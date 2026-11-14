@@ -10,6 +10,7 @@
 
   var BANQUE = window.BANQUE || [];
   var CLE = "ifip-eco-revision-v1";
+  var CONCOURS_DEFAUT = "2026-12-07";
   var CLE_DRIVE = "ifip-eco-drive-v1";
   var GOOGLE_CLIENT_ID = "731283926358-viam3ulpgna14flfdeb9m92l8s620hoi.apps.googleusercontent.com";
   var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
@@ -71,7 +72,7 @@
     return {
       version: 1, questions: {}, seance: null, derniereSeance: null,
       evaluations: 0, jours: [], parJour: {}, preferences: { trous: false },
-      reponses: {}, objectifCelebre: {}, derniereSauvegarde: null
+      reponses: {}, objectifCelebre: {}, concours: CONCOURS_DEFAUT, derniereSauvegarde: null
     };
   }
 
@@ -87,6 +88,7 @@
       if (!objet.preferences) objet.preferences = { trous: false };
       if (!objet.reponses || typeof objet.reponses !== "object" || Array.isArray(objet.reponses)) objet.reponses = {};
       if (!objet.objectifCelebre || typeof objet.objectifCelebre !== "object") objet.objectifCelebre = {};
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(objet.concours || "")) objet.concours = CONCOURS_DEFAUT;
       return objet;
     } catch (e) {
       return etatVide();
@@ -122,6 +124,7 @@
     if (!etat.jours) etat.jours = [];
     if (!etat.reponses || typeof etat.reponses !== "object" || Array.isArray(etat.reponses)) etat.reponses = {};
     if (!etat.objectifCelebre || typeof etat.objectifCelebre !== "object") etat.objectifCelebre = {};
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(etat.concours || "")) etat.concours = CONCOURS_DEFAUT;
   }
 
   function noterSauvegarde() {
@@ -580,6 +583,17 @@
     f.intervalle = intervalle;
     f.prochaineRevision = dansNJours(intervalle);
     f.historique.push({ jour: jour, avant: avant, apres: niveau });
+
+    /* Rien ne doit tomber après le concours : l'intervalle est ramené pour
+       garantir une dernière passage avant l'épreuve. */
+    var joursConcours = joursAvantConcours();
+    if (joursConcours > 0) {
+      var limite = Math.max(1, joursConcours - 1);
+      if (f.intervalle > limite) {
+        f.intervalle = limite;
+        f.prochaineRevision = dansNJours(limite);
+      }
+    }
   }
 
   function questionsARevoir() {
@@ -618,6 +632,41 @@
     var rythme = total / 7;
     var jours = Math.max(1, Math.ceil(restant / rythme));
     return { jours: jours, date: dansNJours(jours), restant: restant, rythme: rythme };
+  }
+
+  /* ---------------- date du concours ---------------- */
+
+  function dateConcours() {
+    var v = etat.concours;
+    return /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : CONCOURS_DEFAUT;
+  }
+
+  function joursAvantConcours() {
+    return ecartJours(aujourdhui(), dateConcours());
+  }
+
+  function decouvertesAujourdhui() {
+    var j = aujourdhui(), n = 0;
+    BANQUE.forEach(function (q) {
+      var f = etat.questions[q.id];
+      if (f && f.historique && f.historique.length && f.historique[0].jour === j) n++;
+    });
+    return n;
+  }
+
+  /* Combien de questions neuves voir chaque jour pour couvrir la banque avant
+     l'épreuve, sans dépasser trois par jour. */
+  function planDecouverte() {
+    var restantes = BANQUE.length - bilanGlobal().travailles;
+    var jours = joursAvantConcours();
+    if (restantes <= 0 || jours <= 0) return 0;
+    return Math.min(3, Math.max(1, Math.ceil(restantes / jours)));
+  }
+
+  function quotaDecouverte() {
+    var plan = planDecouverte();
+    if (!plan) return 0;
+    return Math.max(0, plan - decouvertesAujourdhui());
   }
 
   function bilanGlobal() {
@@ -687,16 +736,9 @@
     });
     dues.sort(function (a, b) { return b.score - a.score; });
 
-    var faitAujourdHui = (etat.parJour && etat.parJour[j]) || 0;
-    var objectif = objectifJour();
-    var resteObjectif = Math.max(0, objectif - faitAujourdHui);
-
-    var nbEnCours = dues.filter(function (x) { return x.f.niveau === "encours"; }).length;
-    var maxNouvelles;
-    if (nbEnCours >= 8) maxNouvelles = 0;
-    else if (nbEnCours >= 4) maxNouvelles = 1;
-    else maxNouvelles = Math.max(1, Math.round(n * 0.3));
-    maxNouvelles = Math.min(maxNouvelles, resteObjectif, nouvelles.length);
+    /* Une place réservée aux nouvelles questions : la découverte ne peut plus
+       être affamée par les révisions dues, surtout à l'approche du concours. */
+    var maxNouvelles = Math.min(quotaDecouverte(), n, nouvelles.length);
 
     plusTard.sort(function (a, b) {
       return (a.f.prochaineRevision || "9999").localeCompare(b.f.prochaineRevision || "9999");
@@ -711,9 +753,11 @@
 
     /* Deux questions maximum par partie, jamais deux fragiles de suite,
        et les nouvelles plafonnées par ce qui reste de l'objectif du jour. */
-    function prendre(x, souple) {
+    function prendre(x, souple, seulementNouvelle) {
       if (!x || deja[x.q.id]) return false;
       var estNouvelle = !x.f.niveau;
+      if (seulementNouvelle === true && !estNouvelle) return false;
+      if (seulementNouvelle === false && estNouvelle) return false;
       if (estNouvelle && nbNouvelles >= maxNouvelles) return false;
       if (!souple) {
         if ((parPartie[x.q.partie] || 0) >= 2) return false;
@@ -732,8 +776,11 @@
       if (dues[w].f.niveau === "parfait" && !dues[w].f.fragile) prendre(dues[w], false);
     }
 
-    for (var i = 0; i < pool.length && choix.length < n; i++) prendre(pool[i], false);
-    for (var k = 0; k < pool.length && choix.length < n; k++) prendre(pool[k], true);
+    var plafondNonNouvelles = Math.max(0, n - maxNouvelles);
+    for (var i = 0; i < pool.length && choix.length < plafondNonNouvelles; i++) prendre(pool[i], false, false);
+    for (var i2 = 0; i2 < pool.length && choix.length < n && nbNouvelles < maxNouvelles; i2++) prendre(pool[i2], false, true);
+    for (var i3 = 0; i3 < pool.length && choix.length < n; i3++) prendre(pool[i3], false, null);
+    for (var k = 0; k < pool.length && choix.length < n; k++) prendre(pool[k], true, null);
 
     var secours = melanger(BANQUE);
     for (var f2 = 0; f2 < secours.length && choix.length < n; f2++) {
@@ -954,6 +1001,16 @@
               ? '<p class="objectif__proj">Au rythme des sept derniers jours, les ' + b.total +
                 " questions seront vues le " + dateCourte(projection.date) + "</p>"
               : "") +
+            '<div class="objectif__concours">' +
+              '<span class="objectif__j">Concours le ' + dateCourte(dateConcours()) +
+                (joursAvantConcours() > 0 ? " · J-" + joursAvantConcours() : "") + "</span>" +
+              '<input type="date" id="date-concours" value="' + dateConcours() + '" aria-label="Date du concours">' +
+            "</div>" +
+            '<p class="objectif__decouverte">' +
+              (b.total - b.travailles > 0
+                ? (b.total - b.travailles) + " à découvrir · " + planDecouverte() + " par jour"
+                : "Toutes les questions ont été vues au moins une fois") +
+            "</p>" +
           "</div>" +
           '<div class="hero__actions">' +
             '<button class="btn btn--primaire" data-action="intelligente">Séance intelligente</button>' +
@@ -1695,6 +1752,16 @@
       recherche = e.target.value;
       filtrerBanque();
     }
+  });
+
+  document.addEventListener("change", function (e) {
+    if (!e.target || e.target.id !== "date-concours") return;
+    var valeur = e.target.value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(valeur)) return;
+    etat.concours = valeur;
+    sauver();
+    rendreAccueil();
+    toast("Concours enregistré : " + dateCourte(valeur) + ".");
   });
 
   var champSauvegarde = document.getElementById("fichier-sauvegarde");

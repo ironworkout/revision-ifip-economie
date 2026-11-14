@@ -1212,3 +1212,30 @@ body { overflow-x: hidden; }
   margin-top: 6px;
   line-height: 1.45;
 }
+
+.objectif__concours {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.objectif__j { font-size: 12px; font-weight: 700; }
+
+.objectif__concours input {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--trait);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--encre-2);
+}
+
+.objectif__decouverte {
+  font-size: 11.5px;
+  color: var(--encre-3);
+  margin-top: 6px;
+}
