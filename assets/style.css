@@ -464,6 +464,23 @@ h1 {
 
 .carte--question { padding: 24px; box-shadow: var(--ombre-forte); }
 
+.btn-avion {
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--trait);
+  border-radius: 50%;
+  background: var(--carte);
+  color: var(--encre-3);
+  cursor: pointer;
+  transition: color .18s, border-color .18s, background .18s;
+}
+
+.btn-avion:hover { color: var(--encre); border-color: #d6d8e4; background: var(--trait-2); }
+
 .question__meta {
   display: flex;
   align-items: center;

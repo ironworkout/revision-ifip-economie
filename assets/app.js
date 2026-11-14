@@ -513,6 +513,12 @@
     return f;
   }
 
+  /* Une question reportée aujourd'hui (bouton avion) est écartée des séances
+     jusqu'à demain, sans toucher à son niveau ni à son historique. */
+  function estReportee(f) {
+    return !!(f && f.reportJusquA === aujourdhui());
+  }
+
   function enregistrerJour() {
     var j = aujourdhui();
     if (etat.jours.indexOf(j) === -1) { etat.jours.push(j); etat.jours.sort(); }
@@ -718,7 +724,7 @@
     var j = aujourdhui();
     var infos = BANQUE.map(function (q) {
       return { q: q, f: etat.questions[q.id] || {} };
-    });
+    }).filter(function (x) { return !estReportee(x.f); });
 
     var dues = infos.filter(function (x) { return x.f.niveau && x.f.prochaineRevision && x.f.prochaineRevision <= j; });
     var nouvelles = infos.filter(function (x) { return !x.f.niveau; });
@@ -782,7 +788,7 @@
 
     var secours = melanger(BANQUE);
     for (var f2 = 0; f2 < secours.length && choix.length < n; f2++) {
-      if (!deja[secours[f2].id]) {
+      if (!deja[secours[f2].id] && !estReportee(etat.questions[secours[f2].id])) {
         choix.push(secours[f2]);
         deja[secours[f2].id] = true;
       }
@@ -805,7 +811,8 @@
   /* ---------------- session ---------------- */
 
   function lancerSeance(mode, questions) {
-    if (!questions || !questions.length) {
+    questions = (questions || []).filter(function (q) { return !estReportee(etat.questions[q.id]); });
+    if (!questions.length) {
       toast("Aucune question disponible pour ce mode.");
       return;
     }
@@ -849,6 +856,31 @@
     enregistrerJour();
     sauver();
     rendreSeance();
+  }
+
+  /* Bouton avion de la carte : la question revient demain. */
+  function reporterQuestion(id) {
+    if (!id) return;
+    var s = etat.seance;
+    fiche(id).reportJusquA = aujourdhui();
+
+    if (s) {
+      var i = s.ids.indexOf(id);
+      if (i !== -1) s.ids.splice(i, 1);
+      if (!s.ids.length) {
+        etat.seance = null;
+        sauver();
+        toast("Séance reportée : les questions reviendront demain.");
+        afficher("accueil");
+        return;
+      }
+      if (s.index >= s.ids.length) s.index = s.ids.length - 1;
+    }
+
+    sauver();
+    revele = false;
+    if (s) rendreSeance();
+    toast("Question reportée à demain.");
   }
 
   function suivante() {
@@ -1111,6 +1143,11 @@
             '<span class="badge badge--' + (q.statut === "officiel" ? "officiel" : "entrainement") + '">' +
               (q.statut === "officiel" ? "Sujet officiel" : "Entraînement") + "</span>" +
             (f && f.fragile ? '<span class="badge-fragile">fragile</span>' : "") +
+            (!deja
+              ? '<button class="btn-avion" data-action="reporter" data-id="' + q.id + '" title="Ne plus me demander cette question aujourd&#39;hui" aria-label="Ne plus me demander cette question aujourd&#39;hui">' +
+                '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>' +
+                "</button>"
+              : "") +
           "</div>" +
           '<h2 class="question__texte">' + q.question + "</h2>" +
           (montre
@@ -1722,6 +1759,8 @@
       sauvegarderDansDrive(false);
     } else if (action === "drive-charger") {
       chargerDepuisDrive();
+    } else if (action === "reporter") {
+      reporterQuestion(cible.getAttribute("data-id"));
     } else if (action === "suivante") {
       suivante();
     } else if (action === "quitter") {
