@@ -651,14 +651,15 @@
     return ecartJours(aujourdhui(), dateConcours());
   }
 
-  /* Taux de réussite des douze dernières évaluations : parfait = 1,
-     presque = 0,6, en cours = 0. Il pilote la place laissée aux nouveautés. */
+  /* Taux de réussite des douze dernières questions travaillées : une seule
+     note par question (sa dernière évaluation), pour que les répétitions
+     d'une même question ne pèsent pas douze fois dans le calcul. */
   function reussiteRecente() {
     var notes = [];
     BANQUE.forEach(function (q) {
       var f = etat.questions[q.id];
-      if (f && f.historique) {
-        f.historique.forEach(function (h) { notes.push(h); });
+      if (f && f.historique && f.historique.length) {
+        notes.push(f.historique[f.historique.length - 1]);
       }
     });
     if (!notes.length) return null;
@@ -739,10 +740,14 @@
     dues.sort(function (a, b) { return b.score - a.score; });
 
     /* La découverte suit les résultats : beaucoup de réussites ouvrent plus de
-       places aux questions neuves, les échecs les referment. */
+       places aux questions neuves, les échecs les referment. Tant que la banque
+       n'est pas couverte, une séance garde au moins une nouveauté (deux pour
+       les séances longues), même quand le taux est bas. */
     var taux = reussiteRecente();
     var partNouvelles = taux === null ? 0.4 : (taux >= 0.85 ? 0.6 : (taux >= 0.65 ? 0.4 : (taux >= 0.45 ? 0.2 : 0)));
-    var maxNouvelles = Math.min(nouvelles.length, Math.max(0, Math.round(n * partNouvelles)));
+    var restantes = BANQUE.length - bilanGlobal().travailles;
+    var plancher = restantes > 0 ? (n >= 10 ? 2 : 1) : 0;
+    var maxNouvelles = Math.min(nouvelles.length, Math.max(Math.round(n * partNouvelles), plancher));
 
     plusTard.sort(function (a, b) {
       return (a.f.prochaineRevision || "9999").localeCompare(b.f.prochaineRevision || "9999");
